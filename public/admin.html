@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Supervision Admin - Hotline v3</title>
+    <style>
+        :root { --admin: #8e44ad; --orange: #e67e22; --danger: #e74c3c; --success: #27ae60; --primary: #3498db; --dark: #2c3e50; }
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; background: #f4f7f6; color: #333; overflow-x: hidden; }
+        
+        /* --- DESIGN LOGIN MODERNE --- */
+        #admin-login-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(135deg, #8e44ad 0%, #3498db 100%);
+            display: flex; align-items: center; justify-content: center;
+            z-index: 20000; transition: opacity 0.5s ease;
+        }
+        .login-box {
+            background: rgba(255, 255, 255, 0.95); padding: 40px; border-radius: 20px;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.2); width: 350px; text-align: center; backdrop-filter: blur(10px);
+        }
+        .login-box h2 { color: var(--admin); margin-bottom: 25px; }
+        .login-box input { 
+            width: 100%; padding: 12px; margin-bottom: 15px; border: 1px solid #ddd; 
+            border-radius: 8px; box-sizing: border-box; outline: none;
+        }
+        .btn-login { 
+            width: 100%; padding: 12px; background: var(--admin); color: white; 
+            border: none; border-radius: 8px; cursor: pointer; font-weight: 600; 
+        }
+
+        /* --- INTERFACE PRINCIPALE --- */
+        header { background: var(--admin); color: white; padding: 15px 30px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .toolbar { background: white; padding: 20px 30px; border-bottom: 1px solid #ddd; display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
+        .card { background: #fff; padding: 10px 20px; border-radius: 8px; border: 1px solid #eee; text-align: center; min-width: 100px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
+        .card b { font-size: 22px; color: var(--admin); }
+        
+        /* --- NOUVEAU: LISTE ATTENTE --- */
+        #waiting-bar { background: #fdf0ff; padding: 10px 30px; border-bottom: 1px solid #e0d7f7; display: none; align-items: center; gap: 10px; font-size: 13px; color: var(--admin); }
+        .waiting-chip { background: var(--admin); color: white; padding: 2px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+
+        .config-group { border-left: 1px solid #eee; padding-left: 15px; display: flex; align-items: center; gap: 10px; font-size: 13px; }
+        
+        .modal-auth {
+            display: none; position: fixed; z-index: 10000; left: 0; top: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.7); backdrop-filter: blur(4px);
+        }
+        .modal-content {
+            background: white; margin: 12% auto; padding: 30px; border-radius: 15px;
+            width: 320px; text-align: center; box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+        }
+
+        #op-manager { display: none; margin: 20px 30px; padding: 20px; background: #fff; border-radius: 12px; border: 1px solid #dcdde1; box-shadow: 0 4px 12px rgba(0,0,0,0.08); animation: fadeIn 0.3s ease; }
+        .op-badge { 
+            background: #f3f0ff; color: var(--admin); padding: 10px 15px; border-radius: 8px; 
+            margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #e0d7f7; 
+        }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }
+
+        main { padding: 30px; }
+        table { width: 100%; border-collapse: collapse; background: white; border-radius: 10px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
+        th { background: #f8f9fa; padding: 15px; text-align: left; font-size: 11px; color: #777; text-transform: uppercase; }
+        td { padding: 15px; border-bottom: 1px solid #f1f1f1; font-size: 14px; }
+        
+        .zone-tag { background: #ecf0f1; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; color: #7f8c8d; }
+
+        .btn { padding: 8px 14px; border: none; border-radius: 4px; cursor: pointer; color: white; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 5px; text-decoration: none; }
+        .btn-view { background: var(--primary); }
+        .btn-export { background: var(--success); }
+        .btn-purge { background: var(--danger); }
+        .btn-manage { background: var(--admin); }
+    </style>
+</head>
+<body>
+
+<div id="admin-login-overlay">
+    <div class="login-box">
+        <div style="font-size: 40px; margin-bottom: 10px;">🛡️</div>
+        <h2>Administration</h2>
+        <input type="text" id="login-user" placeholder="Login">
+        <input type="password" id="login-pass" placeholder="Mot de passe">
+        <button class="btn-login" onclick="performLogin()">Se connecter</button>
+        <p id="login-error" style="color: var(--danger); font-size: 12px; margin-top: 15px; display: none;"></p>
+    </div>
+</div>
+
+<header>
+    <div style="display: flex; align-items: center; gap: 15px;">
+        <h2 style="margin:0;">Console Admin</h2>
+        <span id="status-refresh" style="font-size: 12px; opacity: 0.8;">Connecté</span>
+    </div>
+    <div id="admin-name">---</div>
+</header>
+
+<div class="toolbar">
+    <div class="card">Attente<br><b id="stat-waiting">0</b></div>
+    <div class="card">Actifs<br><b id="stat-active">0</b></div>
+    <div class="card">Moyenne<br><b id="stat-avg">0/5</b></div>
+
+    <div class="config-group">
+        <label><input type="checkbox" id="auto-refresh-check" checked onchange="setupAutoRefresh()"> Auto-refresh</label>
+        <input type="number" id="refresh-time" value="10" style="width:40px; padding:4px;" onchange="setupAutoRefresh()">
+    </div>
+
+    <div class="config-group">
+        <button class="btn btn-manage" onclick="askSupervisor()">👥 Équipe</button>
+        <a href="/api/admin/export-all" class="btn" style="background:var(--dark)">📥 Export Global</a>
+    </div>
+
+    <div class="config-group">
+        <input type="number" id="purge-days" value="30" style="width:40px; padding:4px;"> <span>j.</span>
+        <button class="btn btn-purge" onclick="runPurge()">Purger</button>
+    </div>
+</div>
+
+<div id="waiting-bar">
+    <span>📢 File d'attente :</span>
+    <div id="waiting-list-chips" style="display:flex; gap:8px; flex-wrap:wrap;"></div>
+</div>
+<div id="live-monitor" style="margin: 0 30px 20px; padding: 20px; background: #fffbe6; border: 1px solid #ffe58f; border-radius: 12px; display: none;">
+    <h3 style="margin-top:0; color: #856404; font-size: 14px;">📡 SESSIONS EN DIRECT (ACTIVES)</h3>
+    <div id="live-sessions-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 15px;">
+        </div>
+</div>
+
+<div id="modal-supervisor" class="modal-auth">
+    <div class="modal-content">
+        <h3 style="margin-top:0; color:var(--admin);">🔒 Supervisor</h3>
+        <input type="password" id="sup-code" placeholder="Code secret" style="width:100%; padding:10px; box-sizing:border-box; margin-bottom:15px;">
+        <div style="display:flex; gap:10px;">
+            <button class="btn btn-purge" style="flex:1" onclick="document.getElementById('modal-supervisor').style.display='none'">Annuler</button>
+            <button class="btn btn-manage" style="flex:1" onclick="unlockManager()">Valider</button>
+        </div>
+    </div>
+</div>
+
+<div id="op-manager">
+    <h3 style="margin-top:0; font-size:16px; color:var(--admin);">Gestion des Opérateurs</h3>
+    <div style="display:flex; gap:10px; margin-bottom:20px; flex-wrap:wrap;">
+        <input type="text" id="new-name" placeholder="Nom">
+        <input type="text" id="new-user" placeholder="Login">
+        <input type="password" id="new-pass" placeholder="Pass">
+        <button class="btn btn-success" style="background:var(--success)" onclick="createOperator()">+ Créer</button>
+    </div>
+    <div id="op-list" class="op-list"></div>
+</div>
+
+<main>
+    <table>
+        <thead>
+    <tr>
+        <th>Date</th>
+        <th>Zone</th>
+        <th>Client</th>
+        <th>Opérateur</th>
+        <th>Statut</th> <th>Msgs</th>
+        <th>Score</th>
+        <th>Actions</th>
+    </tr>
+</thead>
+        <tbody id="table-body"></tbody>
+    </table>
+</main>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+    let myToken;
+    let refreshInterval;
+
+    async function performLogin() {
+        const u = document.getElementById('login-user').value;
+        const p = document.getElementById('login-pass').value;
+        const err = document.getElementById('login-error');
+
+        const res = await fetch('/api/login-operator', { 
+            method: 'POST', headers: {'Content-Type': 'application/json'}, 
+            body: JSON.stringify({username: u, password: p})
+        });
+        const data = await res.json();
+        
+        if(data.token) {
+            myToken = data.token;
+            document.getElementById('admin-name').innerText = "Admin : " + u;
+            document.getElementById('admin-login-overlay').style.opacity = '0';
+            setTimeout(() => {
+                document.getElementById('admin-login-overlay').style.display = 'none';
+                startSystem();
+            }, 500);
+        } else {
+            err.style.display = 'block';
+            err.innerText = "Identifiants incorrects.";
+        }
+    }
+
+    function startSystem() {
+        loadData();
+        setupAutoRefresh();
+        const socket = io({ auth: { token: myToken } });
+
+        // Mise à jour de la file d'attente (indispensable avec les zones)
+        socket.on('update_queue', (queue) => {
+            const statWaiting = document.getElementById('stat-waiting');
+            const waitingBar = document.getElementById('waiting-bar');
+            const chipsContainer = document.getElementById('waiting-list-chips');
+
+            statWaiting.innerText = queue.length;
+
+            if (queue.length > 0) {
+                waitingBar.style.display = 'flex';
+                chipsContainer.innerHTML = queue.map(c => `
+                    <div class="waiting-chip">
+                        ${c.name} <span style="opacity:0.7; font-weight:400;">(${c.zone || 'Général'})</span>
+                    </div>
+                `).join('');
+            } else {
+                waitingBar.style.display = 'none';
+            }
+        });
+
+        socket.on('update_stats', d => {
+            document.getElementById('stat-active').innerText = d.active;
+            if(d.waiting !== undefined) document.getElementById('stat-waiting').innerText = d.waiting;
+        });
+    }
+
+    function askSupervisor() {
+        const panel = document.getElementById('op-manager');
+        if(panel.style.display === 'block') { panel.style.display = 'none'; }
+        else { document.getElementById('modal-supervisor').style.display = 'block'; document.getElementById('sup-code').focus(); }
+    }
+
+    function unlockManager() {
+        if(document.getElementById('sup-code').value === "supervisor!") {
+            document.getElementById('modal-supervisor').style.display = 'none';
+            document.getElementById('op-manager').style.display = 'block';
+            loadOperators();
+        } else { alert("Code invalide"); }
+    }
+
+    async function loadOperators() {
+        const res = await fetch('/api/admin/operators');
+        const ops = await res.json();
+        document.getElementById('op-list').innerHTML = ops.map(o => `
+            <div class="op-badge">
+                <span>👤 <b>${o.name}</b> (@${o.username})</span>
+                <div>
+                    <button class="btn btn-view" style="padding:4px 8px" onclick="resetPass('${o.username}')">🔑</button>
+                    <button class="btn btn-purge" style="padding:4px 8px" onclick="deleteOp('${o.username}')">×</button>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    async function createOperator() {
+        const name = document.getElementById('new-name').value;
+        const user = document.getElementById('new-user').value;
+        const pass = document.getElementById('new-pass').value;
+        if(!name || !user || !pass) return alert("Champs vides");
+        await fetch('/api/admin/operators', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ name, username: user, password: pass })
+        });
+        loadOperators();
+    }
+
+    async function resetPass(username) {
+        const n = prompt("Nouveau mot de passe :");
+        if(n) await fetch('/api/admin/operators/reset-password', {
+            method: 'PUT', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ username, newPassword: n })
+        });
+    }
+
+    async function deleteOp(u) {
+        if(confirm("Supprimer @"+u+" ?")) {
+            await fetch('/api/admin/operators/'+u, { method: 'DELETE' });
+            loadOperators();
+        }
+    }
+
+async function forceClose(sid) {
+    if (!confirm("Voulez-vous vraiment clore cette session ?")) return;
+
+    try {
+        const res = await fetch('/api/admin/force-close', {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${myToken}` // Si vous utilisez un token
+            },
+            body: JSON.stringify({ sessionId: sid })
+        });
+
+        const data = await res.json();
+
+        if (res.ok && data.success) {
+            loadData(); // Rafraîchir la liste
+        } else {
+            alert("Erreur : " + (data.error || "Impossible de fermer la session."));
+        }
+    } catch (e) {
+        alert("Erreur réseau : Vérifiez la connexion au serveur.");
+    }
+}
+
+    
+async function loadData() {
+    try {
+        const res = await fetch('/api/admin/sessions');
+        const sessions = await res.json();
+        
+        const tbody = document.getElementById('table-body');
+        const liveGrid = document.getElementById('live-sessions-grid');
+        const monitorDiv = document.getElementById('live-monitor');
+
+        const activeSessions = sessions.filter(s => s.rating === null || s.rating === 0);
+        const historySessions = sessions.filter(s => s.rating !== null && s.rating > 0);
+
+        // 1. MONITORING EN DIRECT (Ajout du badge rouge si signalé)
+        if (activeSessions.length > 0) {
+            monitorDiv.style.display = 'block';
+            liveGrid.innerHTML = activeSessions.map(s => {
+                const isReported = s.reported; // Vérifie si la session est signalée
+                return `
+                <div style="background: ${isReported ? '#fff1f0' : 'white'}; padding:15px; border-radius:8px; border: 2px solid ${isReported ? '#ff4d4f' : '#ffe58f'}; position:relative; transition: all 0.3s;">
+                    ${isReported ? '<div style="position:absolute; top:-10px; right:-10px; background:var(--danger); color:white; padding:2px 8px; border-radius:10px; font-size:10px; font-weight:bold; box-shadow:0 2px 4px rgba(0,0,0,0.2);">🚨 SIGNALÉ</div>' : ''}
+                    <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
+                        <span class="zone-tag">${s.zone || 'Général'}</span>
+                        <button onclick="forceClose('${s.id}')" style="background:none; border:none; color:var(--danger); cursor:pointer; font-weight:bold; font-size:16px;">✕</button>
+                    </div>
+                    <div style="font-weight:700;">${s.client_name}</div>
+                    <div style="font-size:12px; color:#666;">Expert: ${s.operator_username || '---'}</div>
+                    <div style="margin-top:10px; display:flex; gap:5px;">
+                        <button class="btn btn-view" style="flex:1" onclick="window.open('/api/history/${s.id}','','width=500,height=700')">👁️ Observer</button>
+                    </div>
+                </div>`;
+            }).join('');
+        } else {
+            monitorDiv.style.display = 'none';
+        }
+
+        // 2. TABLEAU D'HISTORIQUE (Ajout de la cellule de statut)
+        tbody.innerHTML = historySessions.map(s => {
+            const dateObj = new Date(s.created_at);
+            const reportIcon = s.reported 
+                ? `<span title="${s.report_reason}" style="color:var(--danger); font-weight:bold; cursor:help;">🚨</span>` 
+                : `<span style="color:var(--success); opacity:0.6;">✅</span>`;
+
+            return `
+            <tr style="${s.reported ? 'background-color: #fff1f0;' : ''}">
+                <td>${dateObj.toLocaleDateString()} <br> <small>${dateObj.toLocaleTimeString()}</small></td>
+                <td><span class="zone-tag">${s.zone || 'Général'}</span></td>
+                <td><b>${s.client_name}</b></td>
+                <td>${s.operator_username || '---'}</td>
+                <td>${reportIcon}</td> <td>${s.msg_count}</td>
+                <td style="color:#f1c40f">${'⭐'.repeat(s.rating)}</td>
+                <td>
+                    <button class="btn btn-view" onclick="window.open('/api/history/${s.id}','','width=500,height=700')">👁️</button>
+                    <a href="/api/admin/export/${s.id}" class="btn btn-export">📄</a>
+                </td>
+            </tr>`;
+        }).join('');
+
+        document.getElementById('stat-active').innerText = activeSessions.length;
+        
+    } catch (e) { console.error("Erreur supervision", e); }
+}
+    function setupAutoRefresh() {
+        clearInterval(refreshInterval);
+        const check = document.getElementById('auto-refresh-check');
+        const time = document.getElementById('refresh-time').value;
+        if(check.checked) {
+            refreshInterval = setInterval(loadData, time * 1000);
+        }
+    }
+
+    async function runPurge() {
+        const d = document.getElementById('purge-days').value;
+        if(confirm("Purger à "+d+" jours ?")) {
+            await fetch('/api/admin/cleanup', { 
+                method: 'DELETE', 
+                headers: {'Content-Type': 'application/json'}, 
+                body: JSON.stringify({days: d}) 
+            });
+            loadData();
+        }
+    }
+</script>
+</body>
+</html>
