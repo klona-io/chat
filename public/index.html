@@ -472,16 +472,25 @@ async function loadZones() {
     try {
         const res = await fetch('/api/zones');
         const zones = await res.json();
-        const selectEl = document.getElementById('client-zone');
+        const zoneSelect = document.getElementById('client-zone');
         
-        // On remplit le select
-        selectEl.innerHTML = zones.map(z => `<option value="${z}">${z}</option>`).join('');
+        // On remplit le select normalement
+        zoneSelect.innerHTML = zones.map(z => `<option value="${z}">${z}</option>`).join('');
 
-        // Si une zone était dans l'URL, on force la sélection dans le menu déroulant
+        // --- LOGIQUE DE CACHAGE ---
         const urlParams = new URLSearchParams(window.location.search);
         const zoneFromUrl = urlParams.get('zone');
+
         if (zoneFromUrl) {
-            selectEl.value = zoneFromUrl;
+            // On force la valeur interne
+            zoneSelect.value = zoneFromUrl;
+            selectedZone = zoneFromUrl;
+            
+            // On cache la box (le select) pour que l'utilisateur ne puisse pas la modifier
+            zoneSelect.style.display = 'none';
+            
+            // OPTIONNEL : On peut ajouter un petit texte pour confirmer la zone
+            zoneSelect.insertAdjacentHTML('afterend', `<p style="color:var(--primary); font-weight:600;">📍 Zone : ${zoneFromUrl}</p>`);
         }
     } catch(e) { console.error(e); }
 }
