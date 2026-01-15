@@ -234,6 +234,13 @@
 let socket, currentRoom, sessionId, myName, selectedZone, typingTimer;
 
 window.onload = async () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const zoneFromUrl = urlParams.get('zone'); 
+    
+    if (zoneFromUrl) {
+        sessionStorage.setItem('chat_zone', zoneFromUrl);
+        selectedZone = zoneFromUrl;
+    }
     const savedToken = sessionStorage.getItem('chat_token');
     if (savedToken) {
         myName = sessionStorage.getItem('chat_name');
@@ -465,7 +472,17 @@ async function loadZones() {
     try {
         const res = await fetch('/api/zones');
         const zones = await res.json();
-        document.getElementById('client-zone').innerHTML = zones.map(z => `<option value="${z}">${z}</option>`).join('');
+        const selectEl = document.getElementById('client-zone');
+        
+        // On remplit le select
+        selectEl.innerHTML = zones.map(z => `<option value="${z}">${z}</option>`).join('');
+
+        // Si une zone était dans l'URL, on force la sélection dans le menu déroulant
+        const urlParams = new URLSearchParams(window.location.search);
+        const zoneFromUrl = urlParams.get('zone');
+        if (zoneFromUrl) {
+            selectEl.value = zoneFromUrl;
+        }
     } catch(e) { console.error(e); }
 }
 
