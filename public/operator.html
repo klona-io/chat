@@ -688,7 +688,7 @@
         }
 
         function switchChat(rid) {
-    // 1. Cacher l'état vide
+            // 1. Cacher l'état vide
             const emptyState = document.getElementById('empty-state');
             if (emptyState) emptyState.style.display = 'none';
 
@@ -702,12 +702,15 @@
             if (currentTab) currentTab.classList.add('active');
             if (currentWin) currentWin.classList.add('active');
 
-            // 4. Retirer le badge de message non lu et focus
+            // --- RÉINITIALISATION DU BADGE ---
             const badge = document.getElementById(`badge-${rid}`);
-            if (badge) badge.style.display = 'none';
+            if (badge) {
+                badge.style.display = 'none'; // On cache le rond rouge au clic
+            }
+
             const input = document.getElementById(`in-${rid}`);
             if (input) input.focus();
-        }
+}
 function setupSocketEvents() {
             socket.on('connect', () => {
                 console.log('✅ Connecté au serveur');
@@ -1056,16 +1059,31 @@ function copyShortcut(k) { alert("Tapez " + k + " dans le chat pour l'utiliser."
             });
 
             socket.on('receive_message', d => {
-                const box = document.getElementById(`box-${d.room}`);
+                const rid = d.room;
+                const box = document.getElementById(`box-${rid}`);
+                
                 if (box) {
                     const currentOpName = document.getElementById('op-display-name').innerText;
                     const isMe = d.sender === currentOpName;
                     const cls = d.isSystem ? 'system' : (isMe ? 'me' : 'other');
+                    
+                    // Ajout du message dans la boîte
                     box.innerHTML += `<div class="msg ${cls}">${d.content}<span class="msg-time">${getNow()}</span></div>`;
                     box.scrollTop = box.scrollHeight;
+
                     if (!isMe && !d.isSystem) {
                         playSound(notificationSound);
                         notifyExpert(d.content);
+
+                        // --- LOGIQUE DU ROND ROUGE ---
+                        const currentWin = document.getElementById(`win-${rid}`);
+                        // Si la fenêtre n'est pas affichée (pas la classe 'active')
+                        if (currentWin && !currentWin.classList.contains('active')) {
+                            const badge = document.getElementById(`badge-${rid}`);
+                            if (badge) {
+                                badge.style.display = 'block'; // On montre le rond rouge
+                            }
+                        }
                     }
                 }
             });
