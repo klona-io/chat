@@ -531,6 +531,12 @@ io.on('connection', (socket) => {
             );
 
             if (result.changes > 0) {
+                // 2. INSERTION DU MESSAGE DE TRANSFERT DANS LA BASE DE DONNÉES (Historique)
+                    const transferMsg = `🔄 Transfert : La conversation est reprise par ${socket.user.name}`;
+                    await db.run(
+                        'INSERT INTO messages (session_id, sender_name, content, is_operator) VALUES (?, ?, ?, ?)', 
+                        [sessionId, "Système", transferMsg, 1]
+                    );
                 io.to(room).emit('operator_changed', { newOperatorName: socket.user.name });
                 if(sessionId) {
                     io.to(sessionId).emit('operator_changed', { 
