@@ -269,17 +269,20 @@
         .chat-win.active {
             display: flex;
         }
-#empty-state {
-    margin: auto;
-    text-align: center;
-    color: var(--text-muted);
-    display: flex; /* Utilisez flex pour le centrage */
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    height: 100%;
-    width: 100%;
-}
+
+        #empty-state {
+            margin: auto;
+            text-align: center;
+            color: var(--text-muted);
+            display: flex;
+            /* Utilisez flex pour le centrage */
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            width: 100%;
+        }
+
         .chat-header {
             padding: 15px 25px;
             border-bottom: 1px solid var(--border);
@@ -317,12 +320,28 @@
             position: relative;
         }
 
+        .read-status {
+            font-size: 9px;
+            color: rgba(255, 255, 255, 0.8);
+            position: absolute;
+            bottom: 2px;
+            right: 8px;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .read-status.visible {
+            opacity: 1;
+        }
+
         .msg-time {
             font-size: 9px;
             opacity: 0.6;
             margin-top: 4px;
             display: block;
             text-align: right;
+            margin-right: 15px;
+            /* Espace pour le vu */
         }
 
         .me {
@@ -366,6 +385,8 @@
             border-radius: 10px;
             border: 1px solid var(--border);
             outline: none;
+            color: var(--text-main);
+            background: white;
         }
 
         .btn-send {
@@ -433,8 +454,15 @@
             height: 1px;
             background: #e2e8f0;
         }
-        .tab-item.offline { opacity: 0.6; }
-.chat-win.closed { filter: grayscale(0.5); pointer-events: none; }
+
+        .tab-item.offline {
+            opacity: 0.6;
+        }
+
+        .chat-win.closed {
+            filter: grayscale(0.5);
+            pointer-events: none;
+        }
     </style>
 </head>
 
@@ -541,7 +569,7 @@
                 if (playPromise) {
                     playPromise.catch(e => console.log('Son bloqué par le navigateur'));
                 }
-            } catch (e) {}
+            } catch (e) { }
         }
         let lastQueueCount = 0;
 
@@ -698,7 +726,7 @@
             // 3. Activer la fenêtre demandée
             const currentTab = document.getElementById(`tab-${rid}`);
             const currentWin = document.getElementById(`win-${rid}`);
-            
+
             if (currentTab) currentTab.classList.add('active');
             if (currentWin) currentWin.classList.add('active');
 
@@ -710,8 +738,8 @@
 
             const input = document.getElementById(`in-${rid}`);
             if (input) input.focus();
-}
-function setupSocketEvents() {
+        }
+        function setupSocketEvents() {
             socket.on('connect', () => {
                 console.log('✅ Connecté au serveur');
                 document.getElementById('op-display-name').style.color = '';
@@ -750,7 +778,7 @@ function setupSocketEvents() {
                     input.placeholder = "Le client a quitté.";
                 }
                 // Optionnel : on ferme l'onglet automatiquement après 10 secondes
-                setTimeout(() => { if(sessions[rid]) release(rid, true); }, 10000);
+                setTimeout(() => { if (sessions[rid]) release(rid, true); }, 10000);
             });
 
             socket.on('chat_history_recap', (data) => {
@@ -810,11 +838,11 @@ function setupSocketEvents() {
             socket.on('transfer_request', data => {
                 playSound(notificationSound);
                 showModal("Transfert", `Reprendre ${data.clientName} ?`, () => {
-                socket.emit('accept_transfer', { 
-                    room: data.room, 
-                    sessionId: data.sessionId  // Assurez-vous que data.sessionId contient l'UUID
-                }); 
-                   pick(data.room.replace('room_', ''), data.clientName, data.sessionId, data.zone);
+                    socket.emit('accept_transfer', {
+                        room: data.room,
+                        sessionId: data.sessionId  // Assurez-vous que data.sessionId contient l'UUID
+                    });
+                    pick(data.room.replace('room_', ''), data.clientName, data.sessionId, data.zone);
                 });
             });
         }
@@ -889,6 +917,11 @@ function setupSocketEvents() {
                 updateOperatorList();
             }
             switchChat(rid);
+
+            // Mark read when picking/switching
+            if (sessions[rid].sid) {
+                socket.emit('mark_read', { roomId: rid, sessionId: sessions[rid].sid });
+            }
         }
 
         function send(rid) {
@@ -922,15 +955,15 @@ function setupSocketEvents() {
             }
         }
 
-        
+
         function release(rid, auto = false) {
             const action = () => {
                 const session = sessions[rid];
                 if (session && session.sid) {
                     // CRUCIAL : On envoie le SID et le RID au serveur
-                    socket.emit('finish_session', { 
-                        sessionId: session.sid, 
-                        roomId: rid 
+                    socket.emit('finish_session', {
+                        sessionId: session.sid,
+                        roomId: rid
                     });
                 }
 
@@ -947,46 +980,46 @@ function setupSocketEvents() {
             if (auto) action();
             else showModal("Terminer", "Clore la discussion et demander une note ?", action);
         }
-             
 
-function transfer(rid) {
-    const selectEl = document.getElementById(`tsel-${rid}`);
-    const targetLogin = selectEl.value;
-    const targetName = selectEl.options[selectEl.selectedIndex].text;
 
-    if (!targetLogin) return alert("Veuillez choisir un expert.");
+        function transfer(rid) {
+            const selectEl = document.getElementById(`tsel-${rid}`);
+            const targetLogin = selectEl.value;
+            const targetName = selectEl.options[selectEl.selectedIndex].text;
 
-    showModal(
-        "Confirmer le transfert",
-        `Voulez-vous envoyer ce client à ${targetName} ?`,
-        () => {
-            // 1. On demande le transfert au serveur
-            socket.emit('transfer_chat', {
-                sessionId: sessions[rid].sid,
-                room: rid,
-                newOperatorLogin: targetLogin,
-                clientName: sessions[rid].name,
-                zone: sessions[rid].zone
-            });
+            if (!targetLogin) return alert("Veuillez choisir un expert.");
 
-            // 2. IMPORTANT : On ferme UNIQUEMENT la fenêtre de l'expert A
-            // On ne doit PAS envoyer 'finish_session' ici !
-            const tab = document.getElementById(`tab-${rid}`);
-            const win = document.getElementById(`win-${rid}`);
-            if (tab) tab.remove();
-            if (win) win.remove();
-            delete sessions[rid];
+            showModal(
+                "Confirmer le transfert",
+                `Voulez-vous envoyer ce client à ${targetName} ?`,
+                () => {
+                    // 1. On demande le transfert au serveur
+                    socket.emit('transfer_chat', {
+                        sessionId: sessions[rid].sid,
+                        room: rid,
+                        newOperatorLogin: targetLogin,
+                        clientName: sessions[rid].name,
+                        zone: sessions[rid].zone
+                    });
 
-            // On affiche l'état vide si plus de chats
-            if (Object.keys(sessions).length === 0) {
-                document.getElementById('empty-state').style.display = 'flex';
-            }
+                    // 2. IMPORTANT : On ferme UNIQUEMENT la fenêtre de l'expert A
+                    // On ne doit PAS envoyer 'finish_session' ici !
+                    const tab = document.getElementById(`tab-${rid}`);
+                    const win = document.getElementById(`win-${rid}`);
+                    if (tab) tab.remove();
+                    if (win) win.remove();
+                    delete sessions[rid];
+
+                    // On affiche l'état vide si plus de chats
+                    if (Object.keys(sessions).length === 0) {
+                        document.getElementById('empty-state').style.display = 'flex';
+                    }
+                }
+            );
         }
-    );
-}
 
 
-function copyShortcut(k) { alert("Tapez " + k + " dans le chat pour l'utiliser."); }
+        function copyShortcut(k) { alert("Tapez " + k + " dans le chat pour l'utiliser."); }
         function setupSocketEvents() {
             socket.on('connect', () => {
                 console.log('✅ Connecté au serveur');
@@ -1008,6 +1041,10 @@ function copyShortcut(k) { alert("Tapez " + k + " dans le chat pour l'utiliser."
                 updateOperatorList();
             });
 
+            socket.on('messages_read', (data) => {
+                document.querySelectorAll('.read-status').forEach(el => el.classList.add('visible'));
+            });
+
             socket.on('disconnect', () => {
                 document.getElementById('op-display-name').style.color = 'var(--danger)';
             });
@@ -1026,7 +1063,7 @@ function copyShortcut(k) { alert("Tapez " + k + " dans le chat pour l'utiliser."
                     input.placeholder = "Le client a quitté.";
                 }
                 // Optionnel : on ferme l'onglet automatiquement après 10 secondes
-                setTimeout(() => { if(sessions[rid]) release(rid, true); }, 10000);
+                setTimeout(() => { if (sessions[rid]) release(rid, true); }, 10000);
             });
 
             socket.on('chat_history_recap', (data) => {
@@ -1037,7 +1074,9 @@ function copyShortcut(k) { alert("Tapez " + k + " dans le chat pour l'utiliser."
                         let historyHtml = '<div class="history-divider">Historique</div>';
                         data.messages.forEach(m => {
                             const side = m.is_operator ? 'me' : 'other';
-                            historyHtml += `<div class="msg ${side} history"><b>${m.sender_name}:</b> ${m.content}</div>`;
+                            const readClass = (m.read_at && m.is_operator) ? 'visible' : '';
+                            const readHtml = m.is_operator ? `<span class="read-status ${readClass}">Vu</span>` : '';
+                            historyHtml += `<div class="msg ${side} history"><b>${m.sender_name}:</b> ${m.content}<span class="msg-time">${new Date(m.created_at).toLocaleTimeString()}</span>${readHtml}</div>`;
                         });
                         finalBox.innerHTML = historyHtml + '<div class="history-divider">Direct</div>';
                         finalBox.scrollTop = finalBox.scrollHeight;
@@ -1061,15 +1100,27 @@ function copyShortcut(k) { alert("Tapez " + k + " dans le chat pour l'utiliser."
             socket.on('receive_message', d => {
                 const rid = d.room;
                 const box = document.getElementById(`box-${rid}`);
-                
+
                 if (box) {
                     const currentOpName = document.getElementById('op-display-name').innerText;
                     const isMe = d.sender === currentOpName;
                     const cls = d.isSystem ? 'system' : (isMe ? 'me' : 'other');
-                    
+                    const readHtml = isMe ? `<span class="read-status">Vu</span>` : '';
+
                     // Ajout du message dans la boîte
-                    box.innerHTML += `<div class="msg ${cls}">${d.content}<span class="msg-time">${getNow()}</span></div>`;
+                    box.innerHTML += `<div class="msg ${cls}">${d.content}<span class="msg-time">${getNow()}</span>${readHtml}</div>`;
                     box.scrollTop = box.scrollHeight;
+
+                    // Si je reçois un message de l'autre (CLIENT) et que la fenêtre est ACTIVE, je marque lu
+                    if (!isMe && !d.isSystem) {
+                        const currentWin = document.getElementById(`win-${rid}`);
+                        if (currentWin && currentWin.classList.contains('active') && document.hasFocus()) {
+                            const session = sessions[rid];
+                            if (session && session.sid) {
+                                socket.emit('mark_read', { roomId: rid, sessionId: session.sid });
+                            }
+                        }
+                    }
 
                     if (!isMe && !d.isSystem) {
                         playSound(notificationSound);
@@ -1101,8 +1152,8 @@ function copyShortcut(k) { alert("Tapez " + k + " dans le chat pour l'utiliser."
             socket.on('transfer_request', data => {
                 playSound(notificationSound);
                 showModal("Transfert", `Reprendre ${data.clientName} ?`, () => {
-                    socket.emit('accept_transfer', { 
-                        room: data.room, 
+                    socket.emit('accept_transfer', {
+                        room: data.room,
                         sessionId: data.sessionId  // Assurez-vous que data.sessionId contient l'UUID
                     });
                     pick(data.room.replace('room_', ''), data.clientName, data.sessionId, data.zone);
@@ -1119,37 +1170,37 @@ function copyShortcut(k) { alert("Tapez " + k + " dans le chat pour l'utiliser."
         }
 
         async function updateOperatorList(rid = null) {
-    try {
-        const res = await fetch('/api/operators-online');
-        if (!res.ok) throw new Error("Erreur réseau");
-        const ops = await res.json();
-        
-        // On filtre pour ne pas se voir soi-même dans la liste
-        const otherOps = ops.filter(o => o.login && o.login !== myLogin);
-        
-        // On cible soit un sélecteur précis, soit tous les sélecteurs de fenêtres actives
-        const selectors = rid ? 
-            [document.getElementById(`tsel-${rid}`)] : 
-            document.querySelectorAll('select[id^="tsel-"]');
+            try {
+                const res = await fetch('/api/operators-online');
+                if (!res.ok) throw new Error("Erreur réseau");
+                const ops = await res.json();
 
-        selectors.forEach(sel => {
-            if (!sel) return;
-            
-            // On mémorise la sélection en cours pour ne pas la perdre
-            const currentValue = sel.value;
-            
-            let html = '<option value="">Transférer à...</option>';
-            html += otherOps.map(o => {
-                const isSelected = o.login === currentValue ? 'selected' : '';
-                return `<option value="${o.login}" ${isSelected}>${o.name}</option>`;
-            }).join('');
-            
-            sel.innerHTML = html;
-        });
-    } catch (e) {
-        console.error("Erreur lors de la mise à jour de la liste des experts:", e);
-    }
-}
+                // On filtre pour ne pas se voir soi-même dans la liste
+                const otherOps = ops.filter(o => o.login && o.login !== myLogin);
+
+                // On cible soit un sélecteur précis, soit tous les sélecteurs de fenêtres actives
+                const selectors = rid ?
+                    [document.getElementById(`tsel-${rid}`)] :
+                    document.querySelectorAll('select[id^="tsel-"]');
+
+                selectors.forEach(sel => {
+                    if (!sel) return;
+
+                    // On mémorise la sélection en cours pour ne pas la perdre
+                    const currentValue = sel.value;
+
+                    let html = '<option value="">Transférer à...</option>';
+                    html += otherOps.map(o => {
+                        const isSelected = o.login === currentValue ? 'selected' : '';
+                        return `<option value="${o.login}" ${isSelected}>${o.name}</option>`;
+                    }).join('');
+
+                    sel.innerHTML = html;
+                });
+            } catch (e) {
+                console.error("Erreur lors de la mise à jour de la liste des experts:", e);
+            }
+        }
 
         function renderShortcuts() {
             const list = document.getElementById('shortcuts-list');

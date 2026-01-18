@@ -46,6 +46,7 @@ async function initDb() {
             internal_notes TEXT,
             reported INTEGER DEFAULT 0,
             report_reason TEXT,
+            client_comment TEXT,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );
         CREATE TABLE IF NOT EXISTS messages (
@@ -54,19 +55,29 @@ async function initDb() {
             sender_name TEXT,
             content TEXT,
             is_operator INTEGER,
+            read_at DATETIME,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );
     `);
 
+    // --- MIGRATION: Ajout de colonnes manquantes ---
+    try {
+        await db.run("ALTER TABLE messages ADD COLUMN read_at DATETIME");
+    } catch (e) { }
+    try {
+        await db.run("ALTER TABLE chat_sessions ADD COLUMN client_comment TEXT");
+        console.log("✅ Colonne 'client_comment' ajoutée à la table chat_sessions.");
+    } catch (e) { }
+
     // --- CRÉATION DE L'ADMIN PAR DÉFAUT ---
     const adminUser = 'adm';
     const adminPass = 'admin1090!';
-    
+
     const existingAdmin = await db.get('SELECT * FROM operators WHERE username = ?', [adminUser]);
-    
+
     if (!existingAdmin) {
         const hash = await bcrypt.hash(adminPass, 10);
-        await db.run('INSERT INTO operators (username, display_name, password_hash) VALUES (?, ?, ?)', 
+        await db.run('INSERT INTO operators (username, display_name, password_hash) VALUES (?, ?, ?)',
             [adminUser, 'Administrateur', hash]);
         console.log(`✅ Utilisateur "${adminUser}" créé avec succès.`);
     }
@@ -112,16 +123,22 @@ app.post('/api/login-user', (req, res) => {
 });
 
 app.post('/api/rate-session', async (req, res) => {
-    const { sessionId, rating } = req.body;
+    const { sessionId, rating, comment } = req.body;
     try {
-        await db.run('UPDATE chat_sessions SET rating = ? WHERE id = ?', [rating, sessionId]);
+        await db.run(
+            'UPDATE chat_sessions SET rating = ?, client_comment = ? WHERE id = ?',
+            [rating, comment || null, sessionId]
+        );
         res.json({ success: true });
-    } catch (e) { res.status(500).send(); }
+    } catch (e) {
+        console.error("Erreur notation:", e);
+        res.status(500).json({ error: "Erreur enregistrement" });
+    }
 });
 
 app.get('/api/history-data/:sessionId', async (req, res) => {
     try {
-        const rows = await db.all('SELECT sender_name, content, is_operator, created_at FROM messages WHERE session_id = ? ORDER BY created_at ASC', [req.params.sessionId]);
+        const rows = await db.all('SELECT sender_name, content, is_operator, read_at, created_at FROM messages WHERE session_id = ? ORDER BY created_at ASC', [req.params.sessionId]);
         res.json(rows);
     } catch (e) { res.status(500).json({ error: "Erreur chargement" }); }
 });
@@ -180,6 +197,10 @@ app.get('/api/history/:sessionId', async (req, res) => {
                 <strong>Note Interne de l'expert :</strong><br>
                 ${(session.internal_notes || 'Aucune note.').replace(/\n/g, '<br>')}
             </div>
+            <div style="background:#e0f2f1; padding:15px; border:1px solid #009688; border-radius:8px; margin-bottom:20px;">
+                <strong>Avis du Client :</strong> <span style="color:#f1c40f">${'⭐'.repeat(session.rating || 0)}</span><br>
+                <i>${(session.client_comment || 'Aucun commentaire.').replace(/\n/g, '<br>')}</i>
+            </div>
             <div style="background:white; padding:20px; border-radius:8px; border:1px solid #e2e8f0;">
                 <h3 style="margin-top:0;">Transcription des échanges</h3>
                 <hr style="border:0; border-top:1px solid #eee; margin-bottom:20px;">
@@ -198,9 +219,9 @@ app.get('/api/history/:sessionId', async (req, res) => {
         </html>`;
 
         res.send(html);
-    } catch (e) { 
+    } catch (e) {
         console.error(e);
-        res.status(500).send("Erreur lors de la récupération de l'historique."); 
+        res.status(500).send("Erreur lors de la récupération de l'historique.");
     }
 });
 
@@ -259,12 +280,12 @@ app.post('/api/admin/force-close', async (req, res) => {
 app.get('/api/admin/export/:sessionId', async (req, res) => {
     try {
         const s = await db.get(
-            'SELECT internal_notes, client_name, zone, reported, report_reason FROM chat_sessions WHERE id = ?', 
+            'SELECT internal_notes, client_name, zone, reported, report_reason, rating, client_comment FROM chat_sessions WHERE id = ?',
             [req.params.sessionId]
         );
-        
+
         const messages = await db.all(
-            'SELECT sender_name, content, created_at FROM messages WHERE session_id = ? ORDER BY created_at ASC', 
+            'SELECT sender_name, content, created_at FROM messages WHERE session_id = ? ORDER BY created_at ASC',
             [req.params.sessionId]
         );
 
@@ -276,36 +297,38 @@ app.get('/api/admin/export/:sessionId', async (req, res) => {
         const estSignale = s.reported ? "OUI" : "NON";
         const raisonSignale = s.report_reason || "R.A.S";
 
-        let csv = "\uFEFF"; 
+        let csv = "\uFEFF";
         csv += `Fiche de Session :;${req.params.sessionId}\n`;
         csv += `Zone :;${zone}\n`;
         csv += `Client :;${clientName}\n`;
         csv += `Signalement :;${estSignale}\n`;
         csv += `Motif Signalement :;${raisonSignale.replace(/"/g, '""')}\n`;
-        csv += `Note Interne :;${internalNote.replace(/"/g, '""')}\n\n`;
+        csv += `Note Interne :;${internalNote.replace(/"/g, '""')}\n`;
+        csv += `Note Client :;${s.rating || 0}/5\n`;
+        csv += `Commentaire Client :;"${(s.client_comment || '').replace(/"/g, '""').replace(/\n/g, ' ')}"\n\n`;
         csv += "Date;Expediteur;Message\n";
-        
+
         messages.forEach(m => {
             csv += `${new Date(m.created_at).toLocaleString()};${m.sender_name};"${m.content.replace(/"/g, '""').replace(/\n/g, ' ')}"\n`;
         });
-        
+
         res.setHeader('Content-Type', 'text/csv; charset=utf-8');
         res.setHeader('Content-Disposition', `attachment; filename=session_${req.params.sessionId}.csv`);
         res.send(csv);
-    } catch (e) { 
+    } catch (e) {
         console.error("Erreur export:", e);
-        res.status(500).send("Erreur lors de la génération de l'export."); 
+        res.status(500).send("Erreur lors de la génération de l'export.");
     }
 });
 
 app.get('/api/admin/export-all', async (req, res) => {
     try {
-        const query = `SELECT s.id, s.created_at, s.client_name, s.operator_username, s.reported, s.report_reason,s.internal_notes, s.rating, m.sender_name, m.content, m.created_at as msg_date 
+        const query = `SELECT s.id, s.created_at, s.client_name, s.operator_username, s.reported, s.report_reason,s.internal_notes, s.rating, s.client_comment, m.sender_name, m.content, m.created_at as msg_date 
                        FROM chat_sessions s JOIN messages m ON s.id = m.session_id ORDER BY s.created_at DESC, m.created_at ASC`;
         const result = await db.all(query);
-        let csv = "\uFEFFID;Date;Client;Operateur;Note_Privee;Score;Emetteur;Message;Heure\n";
+        let csv = "\uFEFFID;Date;Client;Operateur;Note_Privee;Score;Commentaire;Emetteur;Message;Heure\n";
         result.forEach(r => {
-            csv += `${r.id};${new Date(r.created_at).toLocaleDateString()};${r.client_name};${r.operator_username || 'N/A'};"${(r.internal_notes || '').replace(/"/g, '""')}";${r.rating || 0};${r.sender_name};"${r.content.replace(/"/g, '""').replace(/\n/g, ' ')}";${new Date(r.msg_date).toLocaleTimeString()}\n`;
+            csv += `${r.id};${new Date(r.created_at).toLocaleDateString()};${r.client_name};${r.operator_username || 'N/A'};"${(r.internal_notes || '').replace(/"/g, '""')}";${r.rating || 0};"${(r.client_comment || '').replace(/"/g, '""').replace(/\n/g, ' ')}";${r.sender_name};"${r.content.replace(/"/g, '""').replace(/\n/g, ' ')}";${new Date(r.msg_date).toLocaleTimeString()}\n`;
         });
         res.setHeader('Content-Type', 'text/csv; charset=utf-8');
         res.setHeader('Content-Disposition', 'attachment; filename=export_global.csv');
@@ -318,9 +341,9 @@ app.delete('/api/admin/cleanup', async (req, res) => {
         // Syntaxe SQLite pour les dates : datetime('now', '-X days')
         await db.run("DELETE FROM chat_sessions WHERE created_at < datetime('now', '-' || ? || ' days')", [req.body.days]);
         res.json({ success: true });
-    } catch (e) { 
+    } catch (e) {
         console.error(e);
-        res.status(500).send(); 
+        res.status(500).send();
     }
 });
 
@@ -332,15 +355,15 @@ app.post('/api/admin/operators', async (req, res) => {
     try {
         const saltRounds = 10;
         const hashedPassword = await bcrypt.hash(password, saltRounds);
-        
+
         await db.run(
             'INSERT INTO operators (display_name, username, password_hash) VALUES (?, ?, ?)',
             [name, username.toLowerCase(), hashedPassword]
         );
         res.json({ success: true });
-    } catch (e) { 
+    } catch (e) {
         console.error(e);
-        res.status(500).json({ error: "Erreur lors de la création (le login existe peut-être déjà)" }); 
+        res.status(500).json({ error: "Erreur lors de la création (le login existe peut-être déjà)" });
     }
 });
 
@@ -381,7 +404,7 @@ io.on('connection', (socket) => {
 
     socket.on('join_waiting_room', (data) => {
         if (socket.user.role === 'user') {
-            socket.sessionId = data.sessionId; 
+            socket.sessionId = data.sessionId;
             socket.isClient = true;
             const zone = data.zone || "Défaut";
             waitingQueue = waitingQueue.filter(c => c.id !== socket.id);
@@ -406,7 +429,7 @@ io.on('connection', (socket) => {
                 isSystem: true,
                 room: room
             });
-            io.emit('refresh_admin_data'); 
+            io.emit('refresh_admin_data');
         } catch (e) {
             console.error("Erreur lors du signalement SQL:", e.message);
         }
@@ -415,12 +438,12 @@ io.on('connection', (socket) => {
     socket.on('get_active_session', async (data) => {
         try {
             const result = await db.get(
-                'SELECT id FROM chat_sessions WHERE client_name = ? AND rating IS NULL ORDER BY created_at DESC LIMIT 1', 
+                'SELECT id FROM chat_sessions WHERE client_name = ? AND rating IS NULL ORDER BY created_at DESC LIMIT 1',
                 [data.name]
             );
             if (result) {
                 const sId = result.id;
-                socket.sessionId = sId; 
+                socket.sessionId = sId;
                 socket.emit('active_session_info', { sessionId: sId, room: `room_${socket.id}` });
             }
         } catch (err) { console.error(err); }
@@ -457,33 +480,33 @@ io.on('connection', (socket) => {
     socket.on('pick_client', async (clientId) => {
         const clientData = waitingQueue.find(c => c.id === clientId);
         const clientSocket = io.sockets.sockets.get(clientId);
-        
+
         if (clientSocket && socket.user.role === 'operator' && clientData) {
             const roomId = `room_${clientId}`;
             socket.join(roomId);
             clientSocket.join(roomId);
             waitingQueue = waitingQueue.filter(c => c.id !== clientId);
-            
+
             // Note: SQLite n'a pas RETURNING, on utilise insert puis lastID
             const resInsert = await db.run(
-                'INSERT INTO chat_sessions (client_name, operator_username, zone) VALUES (?, ?, ?)', 
+                'INSERT INTO chat_sessions (client_name, operator_username, zone) VALUES (?, ?, ?)',
                 [clientSocket.user.name, socket.user.login, clientData.zone]
             );
             const sId = resInsert.lastID;
 
-            socket.sessionId = sId;       
-            clientSocket.sessionId = sId; 
-            io.to(roomId).emit('chat_started', { 
+            socket.sessionId = sId;
+            clientSocket.sessionId = sId;
+            io.to(roomId).emit('chat_started', {
                 operator: socket.user.name, room: roomId, sessionId: sId, zone: clientData.zone
             });
 
             setTimeout(async () => {
-                const history = await db.all('SELECT sender_name, content, is_operator, created_at FROM messages WHERE session_id = ? ORDER BY created_at ASC', [sId]);
-                if(history.length > 0) {
+                const history = await db.all('SELECT sender_name, content, is_operator, read_at, created_at FROM messages WHERE session_id = ? ORDER BY created_at ASC', [sId]);
+                if (history.length > 0) {
                     socket.emit('chat_history_recap', { messages: history, room: roomId, sessionId: sId });
                 }
             }, 500);
-            
+
             io.emit('update_queue', waitingQueue);
             broadcastStats();
         }
@@ -491,7 +514,7 @@ io.on('connection', (socket) => {
 
     socket.on('send_message', async (data) => {
         if (data.sessionId) {
-            await db.run('INSERT INTO messages (session_id, sender_name, content, is_operator) VALUES (?, ?, ?, ?)', 
+            await db.run('INSERT INTO messages (session_id, sender_name, content, is_operator) VALUES (?, ?, ?, ?)',
                 [data.sessionId, socket.user.name, data.message, socket.user.role === 'operator' ? 1 : 0]);
         }
         io.to(data.room).emit('receive_message', { sender: socket.user.name, content: data.message, room: data.room });
@@ -499,6 +522,36 @@ io.on('connection', (socket) => {
 
     socket.on('is_typing', (data) => socket.to(data.room).emit('is_typing', { senderId: socket.id }));
     socket.on('is_not_typing', (data) => socket.to(data.room).emit('is_not_typing', { senderId: socket.id }));
+
+    socket.on('mark_read', async (data) => {
+        const { roomId, sessionId } = data;
+        if (!sessionId) return;
+
+        try {
+            // On marque comme lu tous les messages qui ne viennent PAS de celui qui envoie l'event
+            // (Ex: si c'est l'opérateur qui lit, on marque lus les messages du client)
+            // On peut simplifier en marquant tout ce qui est dans la session et pas encore lu, 
+            // sauf nos propres messages (optionnel, mais plus propre).
+            // Ici on va faire simple : Update tout ce qui n'est pas "moi"
+
+            const isOperator = socket.user.role === 'operator';
+
+            await db.run(
+                `UPDATE messages SET read_at = CURRENT_TIMESTAMP 
+                 WHERE session_id = ? AND read_at IS NULL AND is_operator != ?`,
+                [sessionId, isOperator ? 1 : 0]
+            );
+
+            // On prévient l'AUTRE que c'est lu
+            socket.to(roomId).emit('messages_read', {
+                readerId: socket.id,
+                readAt: new Date().toISOString()
+            });
+
+        } catch (e) {
+            console.error("Erreur mark_read:", e);
+        }
+    });
 
     socket.on('transfer_chat', (data) => {
         const { sessionId, room, newOperatorLogin, clientName, zone } = data;
@@ -532,22 +585,22 @@ io.on('connection', (socket) => {
 
             if (result.changes > 0) {
                 // 2. INSERTION DU MESSAGE DE TRANSFERT DANS LA BASE DE DONNÉES (Historique)
-                    const transferMsg = `🔄 Transfert : La conversation est reprise par ${socket.user.name}`;
-                    await db.run(
-                        'INSERT INTO messages (session_id, sender_name, content, is_operator) VALUES (?, ?, ?, ?)', 
-                        [sessionId, "Système", transferMsg, 1]
-                    );
+                const transferMsg = `🔄 Transfert : La conversation est reprise par ${socket.user.name}`;
+                await db.run(
+                    'INSERT INTO messages (session_id, sender_name, content, is_operator) VALUES (?, ?, ?, ?)',
+                    [sessionId, "Système", transferMsg, 1]
+                );
                 io.to(room).emit('operator_changed', { newOperatorName: socket.user.name });
-                if(sessionId) {
-                    io.to(sessionId).emit('operator_changed', { 
-                        newOperatorName: socket.user.name 
-                    }); 
+                if (sessionId) {
+                    io.to(sessionId).emit('operator_changed', {
+                        newOperatorName: socket.user.name
+                    });
                 }
             } else {
                 console.warn("⚠️ Aucune ligne trouvée pour l'ID:", sessionId);
             }
-        } catch (e) { 
-            console.error("❌ Erreur MAJ transfert DB:", e.message); 
+        } catch (e) {
+            console.error("❌ Erreur MAJ transfert DB:", e.message);
         }
 
         io.to(room).emit('receive_message', {

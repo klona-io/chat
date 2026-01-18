@@ -1,2 +1,59 @@
-npm uninstall pg
-npm install sqlite3 sqlite
+
+
+Backend (Node.js)
+Modularisation : Le fichier monolithique 
+server.js
+ a été découpé.
+src/config/db.js
+ : Gestion centrale de la base de données SQLite.
+src/config/state.js
+ : Gestion de l'état partagé (files d'attente, sockets).
+src/routes/api.js
+ : Toutes les routes HTTP Express.
+src/sockets/index.js
+ : Toute la logique temps réel Socket.IO.
+Sécurité :
+Utilisation de variables d'environnement centralisées.
+Préparation pour des middlewares de sécurité.
+Frontend
+Séparation des responsabilités :
+CSS extrait dans 
+public/css/style.css
+ (Client) et 
+public/css/operator.css
+ (Expert).
+JS extrait dans 
+public/js/client.js
+ et 
+public/js/operator.js
+.
+HTML nettoyé pour ne contenir que la structure.
+Outillage
+Nodemon : Redémarrage automatique du serveur en développement (npm run dev).
+ESLint : Analyse statique du code (npm run lint).
+🚀 Comment lancer le projet
+Installation
+
+npm install
+Lancement en mode développement
+
+npm run dev
+Le serveur démarrera sur http://localhost:3000
+
+Vérification
+
+Accédez à http://localhost:3000 pour la vue client.
+Accédez à http://localhost:3000/operator.html pour la console expert (Login: adm / admin1090!).
+📂 Nouvelle Structure des fichiers
+/
+├── public/              # Assets Frontend
+│   ├── css/             # Styles extraits
+│   ├── js/              # Scripts extraits (logique client/expert)
+│   ├── index.html       # Vue Client
+│   └── operator.html    # Vue Expert
+├── src/
+│   ├── config/          # DB, Constants, State
+│   ├── routes/          # API Express
+│   └── sockets/         # Logique Socket.IO
+├── server.js            # Point d'entrée minimal
+└── package.json         # Scripts et dépendances
