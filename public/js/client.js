@@ -15,6 +15,7 @@ window.onload = async () => {
         selectedZone = sessionStorage.getItem('chat_zone');
         document.getElementById('scr-cgu').classList.add('hidden');
         document.getElementById('chat-ui').classList.remove('hidden');
+        document.getElementById('my-pseudo-header').innerText = myName;
         document.getElementById('active-zone-tag').innerText = "📍 " + selectedZone;
         connectSocket(savedToken);
     } else {
@@ -225,6 +226,10 @@ async function startSession() {
         showToast("Veuillez indiquer votre pseudo pour démarrer.", "error");
         return;
     }
+
+    sessionStorage.setItem('chat_name', myName);
+    sessionStorage.setItem('chat_zone', selectedZone);
+    document.getElementById('my-pseudo-header').innerText = myName;
 
     const res = await fetch('/api/login-user', {
         method: 'POST',

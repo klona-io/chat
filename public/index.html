@@ -170,6 +170,25 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
+            position: relative;
+            /* Pour le positionnement du pseudo au centre */
+        }
+
+        .client-pseudo-display {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            font-weight: 700;
+            font-size: 14px;
+            color: var(--text-main);
+            background: var(--system);
+            padding: 4px 12px;
+            border-radius: 20px;
+            max-width: 150px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
 
         .status-badge {
@@ -497,6 +516,7 @@
                         <div><b id="op-name" style="display:block; font-size:15px;">Support</b><small id="status-txt"
                                 style="color:var(--text-muted)">Recherche de conseiller...</small></div>
                     </div>
+                    <div id="my-pseudo-header" class="client-pseudo-display"></div>
                     <div class="header-actions">
                         <div id="active-zone-tag"
                             style="font-size: 11px; background: var(--system); padding: 5px 12px; border-radius: 12px; color: var(--primary); font-weight: 600;">
