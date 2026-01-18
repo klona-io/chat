@@ -32,12 +32,17 @@ function initSockets(server) {
 
     // --- SOCKET.IO CORE ---
     io.on('connection', (socket) => {
+        console.log(`🔌 Connexion socket: ${socket.id} (Role: ${socket.user ? socket.user.role : 'inconnu'})`);
+
         if (socket.user && socket.user.role === 'operator') {
             state.operatorSockets[socket.user.login] = socket.id;
+            console.log(`👨‍💻 Opérateur connecté: ${socket.user.login}`);
+            socket.emit('update_queue', state.waitingQueue);
             broadcastStats();
         }
 
         socket.on('join_waiting_room', (data) => {
+            console.log(`📥 Demande join_waiting_room de ${socket.id} (Pre: ${socket.user.name})`);
             if (socket.user.role === 'user') {
                 socket.sessionId = data.sessionId;
                 socket.isClient = true;
@@ -221,6 +226,19 @@ function initSockets(server) {
                 isSystem: true,
                 room: room
             });
+
+            // --- FIX: ENVOI DE L'HISTORIQUE AU NOUVEL OPÉRATEUR ---
+            setTimeout(async () => {
+                try {
+                    const db = await getDb();
+                    const history = await db.all('SELECT sender_name, content, is_operator, created_at FROM messages WHERE session_id = ? ORDER BY created_at ASC', [sessionId]);
+                    if (history.length > 0) {
+                        socket.emit('chat_history_recap', { messages: history, room: room, sessionId: sessionId });
+                    }
+                } catch (errHistory) {
+                    console.error("Erreur récupération historique transfert:", errHistory);
+                }
+            }, 500);
         });
 
         socket.on('disconnecting', () => {

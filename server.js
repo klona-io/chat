@@ -399,6 +399,7 @@ io.use((socket, next) => {
 io.on('connection', (socket) => {
     if (socket.user && socket.user.role === 'operator') {
         operatorSockets[socket.user.login] = socket.id;
+        socket.emit('update_queue', waitingQueue);
         broadcastStats();
     }
 
@@ -407,6 +408,7 @@ io.on('connection', (socket) => {
             socket.sessionId = data.sessionId;
             socket.isClient = true;
             const zone = data.zone || "Défaut";
+            socket.chatZone = zone; // Sauvegarder la zone sur la socket
             waitingQueue = waitingQueue.filter(c => c.id !== socket.id);
             waitingQueue.push({ id: socket.id, name: socket.user.name, zone: zone });
             io.emit('update_queue', waitingQueue);
@@ -500,6 +502,19 @@ io.on('connection', (socket) => {
                 operator: socket.user.name, room: roomId, sessionId: sId, zone: clientData.zone
             });
 
+            // Notification join
+            const joinMsg = `${socket.user.name} a rejoint la conversation.`;
+            await db.run(
+                'INSERT INTO messages (session_id, sender_name, content, is_operator) VALUES (?, ?, ?, ?)',
+                [sId, "Système", joinMsg, 1]
+            );
+            io.to(roomId).emit('receive_message', {
+                sender: "Système",
+                content: joinMsg,
+                isSystem: true,
+                room: roomId
+            });
+
             setTimeout(async () => {
                 const history = await db.all('SELECT sender_name, content, is_operator, read_at, created_at FROM messages WHERE session_id = ? ORDER BY created_at ASC', [sId]);
                 if (history.length > 0) {
@@ -544,6 +559,7 @@ io.on('connection', (socket) => {
 
             // On prévient l'AUTRE que c'est lu
             socket.to(roomId).emit('messages_read', {
+                roomId: roomId,
                 readerId: socket.id,
                 readAt: new Date().toISOString()
             });
@@ -603,9 +619,10 @@ io.on('connection', (socket) => {
             console.error("❌ Erreur MAJ transfert DB:", e.message);
         }
 
+        const joinMsg = `${socket.user.name} a rejoint la conversation.`;
         io.to(room).emit('receive_message', {
             sender: "Système",
-            content: `${socket.user.name} a rejoint la conversation.`,
+            content: joinMsg,
             isSystem: true,
             room: room
         });
@@ -613,11 +630,33 @@ io.on('connection', (socket) => {
 
     socket.on('disconnecting', () => {
         const rooms = Array.from(socket.rooms);
-        rooms.forEach(room => {
-            if (room.startsWith('room_')) {
-                socket.to(room).emit('close_chat_window', { room: room });
-            }
-        });
+        if (socket.user && socket.user.role === 'operator') {
+            console.log(`⚠️ Opérateur ${socket.user.login} se déconnecte, vérification des sessions actives...`);
+            rooms.forEach(room => {
+                if (room.startsWith('room_')) {
+                    const clientId = room.replace('room_', '');
+                    const clientSocket = io.sockets.sockets.get(clientId);
+                    if (clientSocket && clientSocket.user && clientSocket.user.role === 'user') {
+                        const zone = clientSocket.chatZone || "Défaut";
+                        console.log(`♻️ Ré-injection de ${clientSocket.user.name} dans la file (Zone: ${zone})`);
+
+                        // Remettre dans la file
+                        waitingQueue = waitingQueue.filter(c => c.id !== clientId);
+                        waitingQueue.push({ id: clientId, name: clientSocket.user.name, zone: zone });
+
+                        // Informer le client
+                        clientSocket.emit('operator_left_requeue', { zone });
+                    }
+                }
+            });
+            // On attend 'disconnect' pour faire l'emit global update_queue (déjà géré)
+        } else {
+            rooms.forEach(room => {
+                if (room.startsWith('room_')) {
+                    socket.to(room).emit('close_chat_window', { room: room });
+                }
+            });
+        }
     });
 
     socket.on('disconnect', async () => {

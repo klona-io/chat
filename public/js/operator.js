@@ -193,7 +193,7 @@ function switchChat(rid) {
     if (emptyState) emptyState.style.display = 'none';
 
     // 2. Désactiver tous les autres onglets et fenêtres
-    document.querySelectorAll('.tab-item, .chat-win').forEach(e => e.classList.remove('active'));
+    document.querySelectorAll('.tab-item, .chat-win').forEach(el => el.classList.remove('active'));
 
     // 3. Activer la fenêtre demandée
     const currentTab = document.getElementById(`tab-${rid}`);
@@ -206,6 +206,12 @@ function switchChat(rid) {
     const badge = document.getElementById(`badge-${rid}`);
     if (badge) {
         badge.style.display = 'none'; // On cache le rond rouge au clic
+    }
+
+    // --- MARQUER COMME VU ---
+    const sid = sessions[rid]?.sid;
+    if (sid) {
+        socket.emit('mark_read', { roomId: rid, sessionId: sid });
     }
 
     const input = document.getElementById(`in-${rid}`);
@@ -256,21 +262,32 @@ function setupSocketEvents() {
 
     socket.on('chat_history_recap', (data) => {
         const rid = data.room;
+        console.log("📜 REÇU HISTORIQUE pour ", rid, data.messages.length, "messages");
         setTimeout(() => {
             const finalBox = document.getElementById(`box-${rid}`);
+            console.log("🔍 Recherche box:", `box-${rid}`, finalBox ? "TROUVÉ" : "NON TROUVÉ");
             if (finalBox) {
                 let historyHtml = '<div class="history-divider">Historique</div>';
                 data.messages.forEach(m => {
                     const side = m.is_operator ? 'me' : 'other';
-                    historyHtml += `<div class="msg ${side} history"><b>${m.sender_name}:</b> ${m.content}</div>`;
+                    const isRead = m.read_at ? 'visible' : '';
+                    const readStatus = m.is_operator ? `<span class="read-status ${isRead}">Vu</span>` : '';
+                    historyHtml += `<div class="msg ${side} history"><b>${m.sender_name}:</b> ${m.content}${readStatus}</div>`;
                 });
                 finalBox.innerHTML = historyHtml + '<div class="history-divider">Direct</div>';
                 finalBox.scrollTop = finalBox.scrollHeight;
+
+                // Marquer comme vu au chargement de l'historique si actif
+                const win = document.getElementById(`win-${rid}`);
+                if (win && win.classList.contains('active')) {
+                    socket.emit('mark_read', { roomId: rid, sessionId: data.sessionId });
+                }
             }
         }, 100);
     });
 
     socket.on('update_queue', q => {
+        console.log("📨 REÇU UPDATE_QUEUE:", q);
         if (q.length > lastQueueCount) playSound(queueSound);
         lastQueueCount = q.length;
         document.getElementById('q-list').innerHTML = q.map(c => `
@@ -290,21 +307,33 @@ function setupSocketEvents() {
             const currentOpName = document.getElementById('op-display-name').innerText;
             const isMe = d.sender === currentOpName;
             const cls = d.isSystem ? 'system' : (isMe ? 'me' : 'other');
-            box.innerHTML += `<div class="msg ${cls}">${d.content}<span class="msg-time">${getNow()}</span></div>`;
+            const readStatus = isMe ? '<span class="read-status">Vu</span>' : '';
+
+            box.innerHTML += `<div class="msg ${cls}">${d.content}<span class="msg-time">${getNow()}</span>${readStatus}</div>`;
             box.scrollTop = box.scrollHeight;
+
             if (!isMe && !d.isSystem) {
                 playSound(notificationSound);
                 notifyExpert(d.content);
-                // --- LOGIQUE DU ROND ROUGE ---
+
                 const currentWin = document.getElementById(`win-${rid}`);
-                // Si la fenêtre n'est pas affichée (pas la classe 'active')
-                if (currentWin && !currentWin.classList.contains('active')) {
+                // Si la fenêtre est active, on marque comme lu DIRECTEMENT
+                if (currentWin && currentWin.classList.contains('active')) {
+                    socket.emit('mark_read', { roomId: rid, sessionId: sessions[rid]?.sid });
+                } else if (currentWin) {
+                    // Sinon on montre le badge rouge
                     const badge = document.getElementById(`badge-${rid}`);
-                    if (badge) {
-                        badge.style.display = 'block'; // On montre le rond rouge
-                    }
+                    if (badge) badge.style.display = 'block';
                 }
             }
+        }
+    });
+
+    socket.on('messages_read', (data) => {
+        console.log("👀 Messages lus dans room:", data.roomId);
+        const box = document.getElementById(`box-${data.roomId}`);
+        if (box) {
+            box.querySelectorAll('.read-status').forEach(el => el.classList.add('visible'));
         }
     });
 
@@ -361,7 +390,7 @@ function pick(cid, name, existingSid = null, zone = "Général") {
     <span class="tab-name">${name}</span>
     <span class="tab-status" id="status-${rid}">En ligne</span>
     <div class="unread-badge" id="badge-${rid}"></div>
-    <span class="close-tab" onclick="event.stopPropagation(); release('${rid}')">×</span>`;
+    <span class="close-tab" onclick="event.stopPropagation(); release('${rid}')">QUITTER</span>`;
         tab.onclick = () => switchChat(rid);
         document.getElementById('tabs-list').appendChild(tab);
 
@@ -563,3 +592,17 @@ function deleteShortcut(k) {
     delete shortcuts[k];
     renderShortcuts();
 }
+
+// --- EXPOSITION DES FONCTIONS AU GLOBAL (POUR LE HTML) ---
+window.handleLogin = handleLogin;
+window.pick = pick;
+window.release = release;
+window.transfer = transfer;
+window.switchChat = switchChat;
+window.saveNote = saveNote;
+window.updateOperatorList = updateOperatorList;
+window.changeName = changeName;
+window.send = send;
+window.deleteShortcut = deleteShortcut;
+window.copyShortcut = copyShortcut;
+window.addShortcut = addShortcut;
