@@ -1,7 +1,6 @@
 require('dotenv').config();
 const express = require('express');
 const http = require('http');
-const compression = require('compression');
 const { Server } = require('socket.io');
 const sqlite3 = require('sqlite3');
 const { open } = require('sqlite');
@@ -14,12 +13,8 @@ const io = new Server(server);
 
 const JWT_SECRET = process.env.JWT_SECRET || 'votre_secret_2026';
 
-app.use(compression());
 app.use(express.json());
-app.use(express.static('public', {
-    maxAge: '1d', // Cache d'un jour pour les fichiers statiques
-    etag: true
-}));
+app.use(express.static('public'));
 
 const operatorSockets = {};
 let waitingQueue = [];
@@ -34,11 +29,6 @@ async function initDb() {
     });
 
     console.log("📂 Base de données SQLite connectée.");
-
-    // Optimisation : Activer le mode WAL (Write-Ahead Logging)
-    // Permet des lectures et écritures simultanées sans blocage.
-    await db.exec('PRAGMA journal_mode=WAL;');
-    console.log("⚡ Mode WAL activé pour SQLite.");
 
     // Création des tables
     await db.exec(`
@@ -68,11 +58,6 @@ async function initDb() {
             read_at DATETIME,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );
-
-        -- --- INDEX POUR LA PERFORMANCE ---
-        CREATE INDEX IF NOT EXISTS idx_messages_session_id ON messages(session_id);
-        CREATE INDEX IF NOT EXISTS idx_sessions_client_name ON chat_sessions(client_name);
-        CREATE INDEX IF NOT EXISTS idx_sessions_operator ON chat_sessions(operator_username);
     `);
 
     // --- MIGRATION: Ajout de colonnes manquantes ---
@@ -81,10 +66,7 @@ async function initDb() {
     } catch (e) { }
     try {
         await db.run("ALTER TABLE chat_sessions ADD COLUMN client_comment TEXT");
-    } catch (e) { }
-    try {
-        await db.run("ALTER TABLE chat_sessions ADD COLUMN ended_at DATETIME");
-        console.log("✅ Colonne 'ended_at' ajoutée à la table chat_sessions.");
+        console.log("✅ Colonne 'client_comment' ajoutée à la table chat_sessions.");
     } catch (e) { }
 
     // --- CRÉATION DE L'ADMIN PAR DÉFAUT ---
@@ -104,23 +86,6 @@ async function initDb() {
 // Lancer l'initialisation
 initDb().catch(err => console.error("Erreur Init DB:", err));
 
-
-// --- HELPER HISTORY ---
-async function getFullHistoryBySessionId(sessionId) {
-    try {
-        // Cette requête récupère tous les messages de TOUTES les sessions du même client
-        // en se basant sur le client_name de la session actuelle.
-        return await db.all(`
-            SELECT sender_name, content, is_operator, read_at, created_at 
-            FROM messages
-            WHERE session_id = ?
-            ORDER BY created_at ASC
-        `, [sessionId]);
-    } catch (e) {
-        console.error("Erreur getFullHistoryBySessionId:", e);
-        return [];
-    }
-}
 
 // --- HELPER STATS ---
 function broadcastStats() {
@@ -173,7 +138,7 @@ app.post('/api/rate-session', async (req, res) => {
 
 app.get('/api/history-data/:sessionId', async (req, res) => {
     try {
-        const rows = await getFullHistoryBySessionId(req.params.sessionId);
+        const rows = await db.all('SELECT sender_name, content, is_operator, read_at, created_at FROM messages WHERE session_id = ? ORDER BY created_at ASC', [req.params.sessionId]);
         res.json(rows);
     } catch (e) { res.status(500).json({ error: "Erreur chargement" }); }
 });
@@ -287,7 +252,7 @@ app.post('/api/admin/force-close', async (req, res) => {
 
     try {
         const result = await db.run(
-            'UPDATE chat_sessions SET rating = 1, ended_at = CURRENT_TIMESTAMP WHERE id = ?',
+            'UPDATE chat_sessions SET rating = 1 WHERE id = ?',
             [cleanId]
         );
 
@@ -490,7 +455,7 @@ io.on('connection', (socket) => {
         const sId = data.sessionId;
         try {
             await db.run(
-                'UPDATE chat_sessions SET rating = COALESCE(rating, 1), ended_at = CURRENT_TIMESTAMP WHERE id = ?',
+                'UPDATE chat_sessions SET rating = COALESCE(rating, 1) WHERE id = ?',
                 [sId]
             );
             io.emit('refresh_admin_data');
@@ -551,7 +516,7 @@ io.on('connection', (socket) => {
             });
 
             setTimeout(async () => {
-                const history = await getFullHistoryBySessionId(sId);
+                const history = await db.all('SELECT sender_name, content, is_operator, read_at, created_at FROM messages WHERE session_id = ? ORDER BY created_at ASC', [sId]);
                 if (history.length > 0) {
                     socket.emit('chat_history_recap', { messages: history, room: roomId, sessionId: sId });
                 }
@@ -661,14 +626,6 @@ io.on('connection', (socket) => {
             isSystem: true,
             room: room
         });
-
-        // Envoyer l'historique complet au nouvel opérateur après transfert
-        setTimeout(async () => {
-            const history = await getFullHistoryBySessionId(sessionId);
-            if (history.length > 0) {
-                socket.emit('chat_history_recap', { messages: history, room: room, sessionId: sessionId });
-            }
-        }, 300);
     });
 
     socket.on('disconnecting', () => {
@@ -713,7 +670,7 @@ io.on('connection', (socket) => {
         if (socket.sessionId) {
             try {
                 const result = await db.run(
-                    'UPDATE chat_sessions SET rating = COALESCE(rating, 1), ended_at = CURRENT_TIMESTAMP WHERE id = ? AND ended_at IS NULL',
+                    'UPDATE chat_sessions SET rating = COALESCE(rating, 1) WHERE id = ? AND rating IS NULL',
                     [socket.sessionId]
                 );
 

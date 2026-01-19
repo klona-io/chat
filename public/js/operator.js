@@ -390,7 +390,7 @@ function pick(cid, name, existingSid = null, zone = "Général") {
     <span class="tab-name">${name}</span>
     <span class="tab-status" id="status-${rid}">En ligne</span>
     <div class="unread-badge" id="badge-${rid}"></div>
-    <span class="close-tab" onclick="event.stopPropagation(); release('${rid}')">QUIT</span>`;
+    <span class="close-tab" onclick="event.stopPropagation(); release('${rid}')">QUITTER</span>`;
         tab.onclick = () => switchChat(rid);
         document.getElementById('tabs-list').appendChild(tab);
 
