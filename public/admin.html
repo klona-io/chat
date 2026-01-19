@@ -263,25 +263,28 @@
             background: var(--admin);
         }
 
-        /* --- MODAL LOGS --- */
-        #modal-logs {
+        /* --- SECTIONS ADMIN --- */
+        .admin-section {
             display: none;
-            position: fixed;
-            z-index: 15000;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.7);
-            backdrop-filter: blur(4px);
+            animation: fadeIn 0.3s ease;
         }
 
-        #modal-logs .modal-content {
-            width: 80%;
-            max-width: 800px;
-            max-height: 80vh;
-            overflow-y: auto;
-            text-align: left;
+        .admin-section.active {
+            display: block;
+        }
+
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin: 30px 0 20px 0;
+            padding-bottom: 10px;
+            border-bottom: 2px solid var(--admin);
+        }
+
+        .section-header h3 {
+            margin: 0;
+            color: var(--admin);
         }
 
         .log-connect {
@@ -292,6 +295,15 @@
         .log-disconnect {
             color: var(--danger);
             font-weight: bold;
+        }
+
+        .btn-nav {
+            background: #636e72;
+        }
+
+        .btn-nav.active {
+            background: var(--admin);
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
         }
     </style>
 </head>
@@ -331,8 +343,11 @@
 
         <div class="config-group">
             <button class="btn btn-manage" onclick="askSupervisor()">👥 Équipe</button>
-            <button class="btn" style="background:#636e72" onclick="showConnectionLogs()">🔌 Connexions</button>
-            <a href="/api/admin/export-all" class="btn" style="background:var(--dark)">📥 Export Global</a>
+            <button class="btn btn-nav active" id="btn-show-history" onclick="switchSection('history')">📜
+                Historique</button>
+            <button class="btn btn-nav" id="btn-show-active" onclick="switchSection('active')">🚀 En cours</button>
+            <button class="btn btn-nav" id="btn-show-logs" onclick="switchSection('logs')">🔌 Connexions</button>
+            <a href="/api/admin/export-all" class="btn" style="background:var(--dark)">📥 Export</a>
         </div>
 
         <div class="config-group">
@@ -344,13 +359,6 @@
     <div id="waiting-bar">
         <span>📢 File d'attente :</span>
         <div id="waiting-list-chips" style="display:flex; gap:8px; flex-wrap:wrap;"></div>
-    </div>
-    <div id="live-monitor"
-        style="margin: 0 30px 20px; padding: 20px; background: #fffbe6; border: 1px solid #ffe58f; border-radius: 12px; display: none;">
-        <h3 style="margin-top:0; color: #856404; font-size: 14px;">📡 SESSIONS EN DIRECT (ACTIVES)</h3>
-        <div id="live-sessions-grid"
-            style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 15px;">
-        </div>
     </div>
 
     <div id="modal-supervisor" class="modal-auth">
@@ -378,12 +386,52 @@
         <div id="op-list" class="op-list"></div>
     </div>
 
-    <div id="modal-logs" class="modal-auth" onclick="if(event.target == this) this.style.display='none'">
-        <div class="modal-content">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
-                <h3 style="margin:0; color:var(--admin);">🔌 Historique des Connexions</h3>
-                <button class="btn btn-purge"
-                    onclick="document.getElementById('modal-logs').style.display='none'">Fermer</button>
+
+    <main>
+        <!-- SECTION HISTORIQUE -->
+        <div id="section-history" class="admin-section active">
+            <div class="section-header">
+                <h3>📜 Historique des Sessions</h3>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Zone</th>
+                        <th>Client</th>
+                        <th>Opérateur</th>
+                        <th>Statut</th>
+                        <th>Msgs</th>
+                        <th>Score</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="table-body"></tbody>
+            </table>
+        </div>
+
+        <!-- SECTION ACTIVES -->
+        <div id="section-active" class="admin-section">
+            <div class="section-header">
+                <h3>🚀 Sessions en cours</h3>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Zone</th>
+                        <th>Client</th>
+                        <th>Expert</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="active-table-body"></tbody>
+            </table>
+        </div>
+
+        <!-- SECTION LOGS -->
+        <div id="section-logs" class="admin-section">
+            <div class="section-header">
+                <h3>🔌 Logs de Connexion</h3>
             </div>
             <table>
                 <thead>
@@ -397,28 +445,10 @@
                 <tbody id="logs-table-body"></tbody>
             </table>
         </div>
-    </div>
-
-    <main>
-        <table>
-            <thead>
-                <tr>
-                    <th>Date</th>
-                    <th>Zone</th>
-                    <th>Client</th>
-                    <th>Opérateur</th>
-                    <th>Statut</th>
-                    <th>Msgs</th>
-                    <th>Score</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody id="table-body"></tbody>
-        </table>
     </main>
 
     <script src="/socket.io/socket.io.js"></script>
-    <script src="js/admin.js?v=2"></script>
+    <script src="js/admin.js?v=3"></script>
 </body>
 
 </html>

@@ -61,7 +61,8 @@ function startSystem() {
     });
 
     socket.on('refresh_admin_logs', () => {
-        if (document.getElementById('modal-logs').style.display === 'block') {
+        const sectionLogs = document.getElementById('section-logs');
+        if (sectionLogs && sectionLogs.classList.contains('active')) {
             loadConnectionLogs();
         }
     });
@@ -144,9 +145,23 @@ async function forceClose(sid) {
     }
 }
 
-async function showConnectionLogs() {
-    document.getElementById('modal-logs').style.display = 'block';
-    loadConnectionLogs();
+function switchSection(id) {
+    const targetSection = document.getElementById('section-' + id);
+    if (!targetSection) return;
+
+    // Hide all sections
+    document.querySelectorAll('.admin-section').forEach(s => s.classList.remove('active'));
+    // Show target section
+    targetSection.classList.add('active');
+
+    // Update button states
+    document.querySelectorAll('.btn-nav').forEach(b => b.classList.remove('active'));
+
+    const btn = document.getElementById('btn-show-' + id);
+    if (btn) btn.classList.add('active');
+
+    // Load specific data if needed
+    if (id === 'logs') loadConnectionLogs();
 }
 
 async function loadConnectionLogs() {
@@ -179,35 +194,26 @@ async function loadData() {
         const sessions = await res.json();
 
         const tbody = document.getElementById('table-body');
-        const liveGrid = document.getElementById('live-sessions-grid');
-        const monitorDiv = document.getElementById('live-monitor');
+        const activeTbody = document.getElementById('active-table-body');
 
         const activeSessions = sessions.filter(s => s.rating === null || s.rating === 0);
         const historySessions = sessions.filter(s => s.rating !== null && s.rating > 0);
 
-        if (activeSessions.length > 0) {
-            monitorDiv.style.display = 'block';
-            liveGrid.innerHTML = activeSessions.map(s => {
-                const isReported = s.reported;
-                return `
-                <div style="background: ${isReported ? '#fff1f0' : 'white'}; padding:15px; border-radius:8px; border: 2px solid ${isReported ? '#ff4d4f' : '#ffe58f'}; position:relative; transition: all 0.3s;">
-                    ${isReported ? '<div style="position:absolute; top:-10px; right:-10px; background:var(--danger); color:white; padding:2px 8px; border-radius:10px; font-size:10px; font-weight:bold; box-shadow:0 2px 4px rgba(0,0,0,0.2);">🚨 SIGNALÉ</div>' : ''}
-                    <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
-                        <span class="zone-tag">${s.zone || 'Général'}</span>
-                        <button onclick="forceClose('${s.id}')" style="background:none; border:none; color:var(--danger); cursor:pointer; font-weight:bold; font-size:16px;">✕</button>
-                    </div>
-                    <div style="font-weight:700;">${s.client_name}</div>
-                    <div style="font-size:12px; color:#666;">Expert: ${s.operator_username || '---'}</div>
-                    <div style="margin-top:10px; display:flex; gap:5px;">
-                        <button class="btn btn-view" style="flex:1" onclick="window.open('/api/history/${s.id}','','width=500,height=700')">👁️ Observer</button>
-                    </div>
-                </div>`;
-            }).join('');
-        } else {
-            monitorDiv.style.display = 'none';
-        }
+        activeTbody.innerHTML = activeSessions.map(s => {
+            const isReported = s.reported;
+            return `
+            <tr style="${isReported ? 'background-color: #fff1f0;' : ''}">
+                <td><span class="zone-tag">${s.zone || 'Général'}</span></td>
+                <td><b>${s.client_name}</b> ${isReported ? '🚨' : ''}</td>
+                <td>${s.operator_username || '---'}</td>
+                <td>
+                    <button class="btn btn-view" onclick="window.open('/api/history/${s.id}','','width=500,height=700')">👁️ Observer</button>
+                    <button class="btn btn-purge" onclick="forceClose('${s.id}')">✕ Clore</button>
+                </td>
+            </tr>`;
+        }).join('');
 
-        tbody.innerHTML = historySessions.map(s => {
+        if (tbody) tbody.innerHTML = historySessions.map(s => {
             const dateObj = new Date(s.created_at);
             const reportIcon = s.reported
                 ? `<span title="${s.report_reason}" style="color:var(--danger); font-weight:bold; cursor:help;">🚨</span>`
@@ -228,7 +234,8 @@ async function loadData() {
             </tr>`;
         }).join('');
 
-        document.getElementById('stat-active').innerText = activeSessions.length;
+        const statActive = document.getElementById('stat-active');
+        if (statActive) statActive.innerText = activeSessions.length;
     } catch (e) { console.error("Erreur supervision", e); }
 }
 
@@ -263,4 +270,4 @@ window.deleteOp = deleteOp;
 window.forceClose = forceClose;
 window.runPurge = runPurge;
 window.setupAutoRefresh = setupAutoRefresh;
-window.showConnectionLogs = showConnectionLogs;
+window.switchSection = switchSection;
