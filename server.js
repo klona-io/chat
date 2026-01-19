@@ -68,6 +68,13 @@ async function initDb() {
             read_at DATETIME,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );
+        CREATE TABLE IF NOT EXISTS connection_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_type TEXT, -- 'client' or 'operator'
+            username TEXT,
+            action TEXT, -- 'connect' or 'disconnect'
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
 
         -- --- INDEX POUR LA PERFORMANCE ---
         CREATE INDEX IF NOT EXISTS idx_messages_session_id ON messages(session_id);
@@ -119,6 +126,19 @@ async function getFullHistoryBySessionId(sessionId) {
     } catch (e) {
         console.error("Erreur getFullHistoryBySessionId:", e);
         return [];
+    }
+}
+
+// --- HELPER LOGGING ---
+async function logConnection(userType, username, action) {
+    try {
+        await db.run(
+            'INSERT INTO connection_logs (user_type, username, action) VALUES (?, ?, ?)',
+            [userType, username, action]
+        );
+        io.emit('refresh_admin_logs');
+    } catch (e) {
+        console.error("Erreur logConnection:", e);
     }
 }
 
@@ -275,6 +295,13 @@ app.get('/api/admin/sessions', async (req, res) => {
             SELECT s.*, (SELECT COUNT(*) FROM messages WHERE session_id = s.id) as msg_count 
             FROM chat_sessions s ORDER BY created_at DESC
         `);
+        res.json(rows);
+    } catch (e) { res.status(500).send(); }
+});
+
+app.get('/api/admin/connection-logs', async (req, res) => {
+    try {
+        const rows = await db.all('SELECT * FROM connection_logs ORDER BY created_at DESC LIMIT 100');
         res.json(rows);
     } catch (e) { res.status(500).send(); }
 });
@@ -436,6 +463,7 @@ io.on('connection', (socket) => {
         operatorSockets[socket.user.login] = socket.id;
         socket.emit('update_queue', waitingQueue);
         broadcastStats();
+        logConnection('operator', socket.user.login, 'connect');
     }
 
     socket.on('join_waiting_room', (data) => {
@@ -448,6 +476,7 @@ io.on('connection', (socket) => {
             waitingQueue.push({ id: socket.id, name: socket.user.name, zone: zone });
             io.emit('update_queue', waitingQueue);
             broadcastStats();
+            logConnection('client', socket.user.name, 'connect');
         }
     });
 
@@ -724,6 +753,10 @@ io.on('connection', (socket) => {
             } catch (e) {
                 console.error("Erreur DB lors de la déconnexion client:", e.message);
             }
+        }
+
+        if (socket.user) {
+            logConnection(socket.user.role === 'operator' ? 'operator' : 'client', socket.user.name || socket.user.login, 'disconnect');
         }
 
         io.emit('update_queue', waitingQueue);

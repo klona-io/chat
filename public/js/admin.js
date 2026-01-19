@@ -59,6 +59,12 @@ function startSystem() {
         console.log("🔄 Rafraîchissement forcé des données admin");
         loadData();
     });
+
+    socket.on('refresh_admin_logs', () => {
+        if (document.getElementById('modal-logs').style.display === 'block') {
+            loadConnectionLogs();
+        }
+    });
 }
 
 function askSupervisor() {
@@ -135,6 +141,35 @@ async function forceClose(sid) {
         }
     } catch (e) {
         alert("Erreur réseau : Vérifiez la connexion au serveur.");
+    }
+}
+
+async function showConnectionLogs() {
+    document.getElementById('modal-logs').style.display = 'block';
+    loadConnectionLogs();
+}
+
+async function loadConnectionLogs() {
+    try {
+        const res = await fetch('/api/admin/connection-logs');
+        const logs = await res.json();
+        const tbody = document.getElementById('logs-table-body');
+
+        tbody.innerHTML = logs.map(l => {
+            const date = new Date(l.created_at);
+            const actionClass = l.action === 'connect' ? 'log-connect' : 'log-disconnect';
+            const actionLabel = l.action === 'connect' ? 'Connexion' : 'Déconnexion';
+            return `
+                <tr>
+                    <td>${date.toLocaleDateString()} ${date.toLocaleTimeString()}</td>
+                    <td>${l.user_type === 'operator' ? '👨‍💻 Opérateur' : '👤 Client'}</td>
+                    <td><b>${l.username}</b></td>
+                    <td class="${actionClass}">${actionLabel}</td>
+                </tr>
+            `;
+        }).join('');
+    } catch (e) {
+        console.error("Erreur chargement logs:", e);
     }
 }
 
@@ -228,3 +263,4 @@ window.deleteOp = deleteOp;
 window.forceClose = forceClose;
 window.runPurge = runPurge;
 window.setupAutoRefresh = setupAutoRefresh;
+window.showConnectionLogs = showConnectionLogs;

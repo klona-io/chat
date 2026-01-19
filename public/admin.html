@@ -262,6 +262,37 @@
         .btn-manage {
             background: var(--admin);
         }
+
+        /* --- MODAL LOGS --- */
+        #modal-logs {
+            display: none;
+            position: fixed;
+            z-index: 15000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(4px);
+        }
+
+        #modal-logs .modal-content {
+            width: 80%;
+            max-width: 800px;
+            max-height: 80vh;
+            overflow-y: auto;
+            text-align: left;
+        }
+
+        .log-connect {
+            color: var(--success);
+            font-weight: bold;
+        }
+
+        .log-disconnect {
+            color: var(--danger);
+            font-weight: bold;
+        }
     </style>
 </head>
 
@@ -300,6 +331,7 @@
 
         <div class="config-group">
             <button class="btn btn-manage" onclick="askSupervisor()">👥 Équipe</button>
+            <button class="btn" style="background:#636e72" onclick="showConnectionLogs()">🔌 Connexions</button>
             <a href="/api/admin/export-all" class="btn" style="background:var(--dark)">📥 Export Global</a>
         </div>
 
@@ -344,6 +376,27 @@
                 Créer</button>
         </div>
         <div id="op-list" class="op-list"></div>
+    </div>
+
+    <div id="modal-logs" class="modal-auth" onclick="if(event.target == this) this.style.display='none'">
+        <div class="modal-content">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                <h3 style="margin:0; color:var(--admin);">🔌 Historique des Connexions</h3>
+                <button class="btn btn-purge"
+                    onclick="document.getElementById('modal-logs').style.display='none'">Fermer</button>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Date et Heure</th>
+                        <th>Type</th>
+                        <th>Utilisateur / Pseudo</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody id="logs-table-body"></tbody>
+            </table>
+        </div>
     </div>
 
     <main>
